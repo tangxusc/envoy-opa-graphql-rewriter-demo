@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/tangxu/GolandProjects/graphql-opa/graphql-opa -type f \\\\\\(-name *.go -o -name *.mod -o -name *.graphqls -o -name *.rego -o -name *.md \\\\\\))",
+      "Bash(xargs ls:*)",
+      "Bash(find /Users/tangxu/GolandProjects/graphql-opa -name README* ! -path */.gopath/* ! -path */.gocache/*)",
+      "Bash(grep -E \"\\\\.\\(md|yaml|yml|json\\)$\")",
+      "Bash(find /Users/tangxu/GolandProjects/graphql-rewriter -type d -not -path */.*)",
+      "Bash(cd:*)",
+      "Bash(go mod:*)",
+      "Bash(go run:*)",
+      "Bash(go version:*)",
+      "Bash(go build:*)",
+      "Bash(GOPROXY=https://goproxy.cn,direct GONOSUMDB='*' GONOSUMCHECK='*' go mod tidy)"
+    ]
+  }
+}

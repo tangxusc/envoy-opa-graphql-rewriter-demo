@@ -1,0 +1,20 @@
+type User {
+  id: ID!
+  name: String!
+  roles: [String!]!
+}
+
+type Post {
+  id: ID!
+  title: String!
+  authorID: ID!
+}
+
+type Query {
+  publicInfo: String!
+  me: User
+}
+
+type Mutation {
+  createPost(title: String!): Post
+}

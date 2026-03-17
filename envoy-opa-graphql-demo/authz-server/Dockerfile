@@ -1,0 +1,20 @@
+FROM golang:1.24-alpine AS builder
+
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GONOSUMDB=*
+ENV GONOSUMCHECK=*
+ENV GOTOOLCHAIN=auto
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -o /authz-server ./cmd/server
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /authz-server /authz-server
+COPY --from=builder /app/policy /policy
+EXPOSE 9001
+CMD ["/authz-server"]
