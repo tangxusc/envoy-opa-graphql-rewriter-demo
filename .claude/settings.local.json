@@ -11,7 +11,15 @@
       "Bash(go run:*)",
       "Bash(go version:*)",
       "Bash(go build:*)",
-      "Bash(GOPROXY=https://goproxy.cn,direct GONOSUMDB='*' GONOSUMCHECK='*' go mod tidy)"
+      "Bash(GOPROXY=https://goproxy.cn,direct GONOSUMDB='*' GONOSUMCHECK='*' go mod tidy)",
+      "Bash(curl -X GET http://localhost:7788/api/config -v)",
+      "WebSearch",
+      "Bash(curl -v -X PUT https://localhost:7788/api/config -H \"Content-Type: application/json\" -d '{\"\"\"\"config_version\"\"\"\":\"\"\"\"v8\"\"\"\"}' -k)",
+      "Bash(curl -v -X PUT http://localhost:7788/api/config -H \"Content-Type: application/json\" -d '{\"\"\"\"config_version\"\"\"\":\"\"\"\"v8\"\"\"\",\"\"\"\"theme\"\"\"\":\"\"\"\"SYSTEM\"\"\"\"}')",
+      "Bash(curl:*)",
+      "Bash(go test:*)",
+      "Bash(go tool:*)",
+      "Bash(done)"
     ]
   }
 }

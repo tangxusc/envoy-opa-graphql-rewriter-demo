@@ -17,6 +17,12 @@ import (
 	"authz-server/internal/rewriter"
 )
 
+// Function pointer vars for dependency injection / testing.
+var (
+	jwtParseFromHeader = jwt.ParseFromHeader
+	rewriteBody        = rewriter.RewriteBody
+)
+
 // Server 实现 Envoy ext_authz gRPC v3 接口。
 type Server struct {
 	evaluator *opa.Evaluator
@@ -33,7 +39,7 @@ func (s *Server) Check(ctx context.Context, req *authv3.CheckRequest) (*authv3.C
 
 	// 1. 解析 JWT
 	authHeader := httpReq.GetHeaders()["authorization"]
-	userInfo, err := jwt.ParseFromHeader(authHeader)
+	userInfo, err := jwtParseFromHeader(authHeader)
 	if err != nil {
 		log.Printf("jwt parse error: %v", err)
 		return denied(codes.Unauthenticated, "invalid token"), nil
@@ -83,7 +89,7 @@ func (s *Server) Check(ctx context.Context, req *authv3.CheckRequest) (*authv3.C
 
 	// 5. 如有 denied_fields，改写 body
 	if len(decision.DeniedFields) > 0 && body != "" {
-		rewrittenBody, err := rewriter.RewriteBody([]byte(body), decision.DeniedFields)
+		rewrittenBody, err := rewriteBody([]byte(body), decision.DeniedFields)
 		if err != nil {
 			log.Printf("rewrite error: %v", err)
 			return denied(codes.Internal, "query rewrite failed"), nil
