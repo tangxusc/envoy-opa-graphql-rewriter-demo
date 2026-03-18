@@ -9,6 +9,8 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
 
@@ -60,6 +62,9 @@ func (s *Server) Check(ctx context.Context, req *authv3.CheckRequest) (*authv3.C
 	// 3. 提取 query 中的字段名
 	fields := extractTopFields(gqlBody.Query)
 
+	// 3.5 提取 operation type
+	opType := extractOperationType(gqlBody.Query)
+
 	// 4. 调用 OPA 评估
 	evalInput := opa.EvalInput{
 		User: opa.UserInput{
@@ -68,8 +73,9 @@ func (s *Server) Check(ctx context.Context, req *authv3.CheckRequest) (*authv3.C
 			Roles:         userInfo.Roles,
 		},
 		Request: opa.RequestInput{
-			Query:  gqlBody.Query,
-			Fields: fields,
+			Query:         gqlBody.Query,
+			Fields:        fields,
+			OperationType: opType,
 		},
 	}
 
@@ -149,6 +155,31 @@ func denied(code codes.Code, msg string) *authv3.CheckResponse {
 				},
 			},
 		},
+	}
+}
+
+// extractOperationType 使用 gqlparser 解析 GraphQL query 的 operation type。
+// 返回 "query"、"mutation"、"subscription" 或空字符串。
+func extractOperationType(query string) string {
+	if query == "" {
+		return ""
+	}
+	doc, err := parser.ParseQuery(&ast.Source{Input: query})
+	if err != nil {
+		return ""
+	}
+	if len(doc.Operations) == 0 {
+		return ""
+	}
+	switch doc.Operations[0].Operation {
+	case ast.Query:
+		return "query"
+	case ast.Mutation:
+		return "mutation"
+	case ast.Subscription:
+		return "subscription"
+	default:
+		return ""
 	}
 }
 

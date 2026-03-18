@@ -8,3 +8,11 @@ type Query {
   employeeByID(id: String!): Employee
   employees: [Employee!]!
 }
+
+type Mutation {
+  updateEmployee(id: String!, name: String, salary: Int): Employee!
+}
+
+type Subscription {
+  employeeUpdated(id: String): Employee!
+}

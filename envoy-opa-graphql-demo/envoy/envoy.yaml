@@ -12,6 +12,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: ingress_http
                 codec_type: AUTO
+                stream_idle_timeout: 300s  # SSE 长连接保活
                 route_config:
                   name: local_route
                   virtual_hosts:
@@ -22,6 +23,7 @@ static_resources:
                             prefix: "/"
                           route:
                             cluster: graphql_service
+                            timeout: 0s  # 禁用 route 超时（SSE 无终止时间）
                 http_filters:
                   # 1. ext_authz: 将请求发送给 authz-server 进行鉴权
                   - name: envoy.filters.http.ext_authz

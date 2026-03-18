@@ -165,3 +165,54 @@ func TestRewriteBody_InlineFragmentAllRemoved(t *testing.T) {
 		t.Errorf("expected empty inline fragment to be removed, got %s", out)
 	}
 }
+
+func TestRewriteBody_SubscriptionRewrite(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `subscription { employeeUpdated { id name salary } }`)
+	out, err := RewriteBody(body, []string{"salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary to be removed from subscription, got %s", out)
+	}
+	if !strings.Contains(string(out), "subscription") {
+		t.Errorf("expected subscription keyword to remain, got %s", out)
+	}
+	if !strings.Contains(string(out), "id") {
+		t.Errorf("expected id to remain, got %s", out)
+	}
+	if !strings.Contains(string(out), "name") {
+		t.Errorf("expected name to remain, got %s", out)
+	}
+}
+
+func TestRewriteBody_SubscriptionWithArgs(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `subscription { employeeUpdated(id: "emp-1") { id name salary } }`)
+	out, err := RewriteBody(body, []string{"salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary to be removed from subscription with args, got %s", out)
+	}
+	if !strings.Contains(string(out), "employeeUpdated") {
+		t.Errorf("expected employeeUpdated to remain, got %s", out)
+	}
+}
+
+func TestRewriteBody_MutationRewrite(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `mutation { updateEmployee(id: "emp-1", name: "Alice Updated") { id name salary } }`)
+	out, err := RewriteBody(body, []string{"salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary to be removed from mutation, got %s", out)
+	}
+	if !strings.Contains(string(out), "mutation") {
+		t.Errorf("expected mutation keyword to remain, got %s", out)
+	}
+}

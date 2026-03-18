@@ -8,5 +8,11 @@ type Employee struct {
 	Salary int    `json:"salary"`
 }
 
+type Mutation struct {
+}
+
 type Query struct {
+}
+
+type Subscription struct {
 }

@@ -6,32 +6,99 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"graphql-server/graph/generated"
 	"graphql-server/graph/model"
 )
 
-var employees = []*model.Employee{
-	{ID: "emp-1", Name: "Alice", Salary: 50000},
-	{ID: "emp-2", Name: "Bob", Salary: 60000},
-	{ID: "emp-3", Name: "Charlie", Salary: 70000},
+// UpdateEmployee is the resolver for the updateEmployee field.
+func (r *mutationResolver) UpdateEmployee(ctx context.Context, id string, name *string, salary *int) (*model.Employee, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	emp, ok := r.employees[id]
+	if !ok {
+		return nil, fmt.Errorf("employee %q not found", id)
+	}
+
+	if name != nil {
+		emp.Name = *name
+	}
+	if salary != nil {
+		emp.Salary = *salary
+	}
+
+	// 发布更新事件
+	r.eventBus.Publish(emp)
+
+	return emp, nil
 }
 
 // EmployeeByID is the resolver for the employeeByID field.
 func (r *queryResolver) EmployeeByID(ctx context.Context, id string) (*model.Employee, error) {
-	for _, emp := range employees {
-		if emp.ID == id {
-			return emp, nil
-		}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	emp, ok := r.employees[id]
+	if !ok {
+		return nil, nil
 	}
-	return nil, nil
+	return emp, nil
 }
 
 // Employees is the resolver for the employees field.
 func (r *queryResolver) Employees(ctx context.Context) ([]*model.Employee, error) {
-	return employees, nil
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*model.Employee, 0, len(r.employees))
+	for _, emp := range r.employees {
+		result = append(result, emp)
+	}
+	return result, nil
 }
+
+// EmployeeUpdated is the resolver for the employeeUpdated field.
+func (r *subscriptionResolver) EmployeeUpdated(ctx context.Context, id *string) (<-chan *model.Employee, error) {
+	subID, ch := r.eventBus.Subscribe()
+
+	// 创建过滤后的 channel
+	out := make(chan *model.Employee, 1)
+
+	go func() {
+		defer close(out)
+		defer r.eventBus.Unsubscribe(subID)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case emp, ok := <-ch:
+				if !ok {
+					return
+				}
+				// 如果指定了 id 过滤，则只转发匹配的事件
+				if id != nil && emp.ID != *id {
+					continue
+				}
+				select {
+				case out <- emp:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return out, nil
+}
+
+// Mutation returns generated.MutationResolver implementation.
+func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+// Subscription returns generated.SubscriptionResolver implementation.
+func (r *Resolver) Subscription() generated.SubscriptionResolver { return &subscriptionResolver{r} }
+
+type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type subscriptionResolver struct{ *Resolver }

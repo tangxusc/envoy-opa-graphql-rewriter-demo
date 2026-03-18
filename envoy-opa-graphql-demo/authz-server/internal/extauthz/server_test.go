@@ -362,5 +362,106 @@ func TestCheck_NilAttributes(t *testing.T) {
 	}
 }
 
+func TestExtractOperationType(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		query  string
+		expect string
+	}{
+		{name: "query implicit", query: "{ users { name } }", expect: "query"},
+		{name: "query explicit", query: "query { users { name } }", expect: "query"},
+		{name: "mutation", query: `mutation { updateEmployee(id: "emp-1", name: "Bob") { id name } }`, expect: "mutation"},
+		{name: "subscription", query: "subscription { employeeUpdated { id name salary } }", expect: "subscription"},
+		{name: "empty", query: "", expect: ""},
+		{name: "invalid", query: "{{{ bad", expect: ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractOperationType(tc.query)
+			if got != tc.expect {
+				t.Errorf("extractOperationType(%q) = %q, want %q", tc.query, got, tc.expect)
+			}
+		})
+	}
+}
+
+func TestCheck_SubscriptionAllowed(t *testing.T) {
+	origJWT := jwtParseFromHeader
+	defer func() { jwtParseFromHeader = origJWT }()
+	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
+		return &jwt.UserInfo{
+			Subject:       "alice",
+			Roles:         []string{"admin"},
+			Authenticated: true,
+		}, nil
+	}
+
+	eval := fakeEvaluator(t)
+	s := NewServer(eval)
+
+	body, _ := json.Marshal(map[string]string{"query": "subscription { employeeUpdated { id name salary } }"})
+	req := makeCheckRequest("Bearer fake-token", string(body))
+
+	resp, err := s.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if resp.GetStatus().GetCode() != int32(codes.OK) {
+		t.Errorf("status code = %d, want OK", resp.GetStatus().GetCode())
+	}
+}
+
+func TestCheck_SubscriptionRewritten(t *testing.T) {
+	origJWT := jwtParseFromHeader
+	origRewrite := rewriteBody
+	defer func() {
+		jwtParseFromHeader = origJWT
+		rewriteBody = origRewrite
+	}()
+
+	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
+		return &jwt.UserInfo{
+			Subject:       "bob",
+			Roles:         []string{"user"},
+			Authenticated: true,
+		}, nil
+	}
+
+	rewriteBody = func(body []byte, deniedFields []string) ([]byte, error) {
+		return []byte(`{"query":"subscription { employeeUpdated { id name } }"}`), nil
+	}
+
+	eval := fakeEvaluator(t)
+	s := NewServer(eval)
+
+	multilineQuery := "subscription {\n  employeeUpdated {\n    id\n    name\n    salary\n  }\n}"
+	body, _ := json.Marshal(map[string]string{"query": multilineQuery})
+	req := makeCheckRequest("Bearer fake", string(body))
+
+	resp, err := s.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if resp.GetStatus().GetCode() != int32(codes.OK) {
+		t.Errorf("status code = %d, want OK", resp.GetStatus().GetCode())
+	}
+
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OkResponse")
+	}
+	found := false
+	for _, h := range okResp.GetHeaders() {
+		if h.GetHeader().GetKey() == "x-rewritten-body" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected x-rewritten-body header for subscription rewrite")
+	}
+}
+
 // Suppress unused import warning
 var _ = corev3.HeaderValue{}

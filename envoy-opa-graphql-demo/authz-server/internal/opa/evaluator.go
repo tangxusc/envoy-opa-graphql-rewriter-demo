@@ -27,8 +27,9 @@ type UserInput struct {
 
 // RequestInput 传递给 OPA 策略的请求信息。
 type RequestInput struct {
-	Query  string   `json:"query"`
-	Fields []string `json:"fields"`
+	Query         string   `json:"query"`
+	Fields        []string `json:"fields"`
+	OperationType string   `json:"operation_type"`
 }
 
 // EvalInput 是 OPA 评估的顶层输入。

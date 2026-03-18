@@ -23,7 +23,7 @@ decision := {
 	"reason": concat("; ", deny),
 }
 
-# 非 admin 用户 salary 字段被拒绝
+# 非 admin 用户 salary 字段被拒绝（适用于 query / mutation / subscription）
 denied_fields contains "salary" if {
 	input.user.authenticated
 	not can_read_salary
