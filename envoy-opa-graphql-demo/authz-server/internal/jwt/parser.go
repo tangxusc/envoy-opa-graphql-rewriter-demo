@@ -12,11 +12,13 @@ const defaultSecret = "demo-secret"
 type UserInfo struct {
 	Subject       string
 	Roles         []string
+	Privileges    string
 	Authenticated bool
 }
 
 type Claims struct {
-	Roles []string `json:"roles"`
+	Roles      []string `json:"roles"`
+	Privileges string   `json:"privileges"`
 	gojwt.RegisteredClaims
 }
 
@@ -55,6 +57,7 @@ func ParseFromHeader(authHeader string) (*UserInfo, error) {
 	return &UserInfo{
 		Subject:       claims.Subject,
 		Roles:         claims.Roles,
+		Privileges:    claims.Privileges,
 		Authenticated: true,
 	}, nil
 }

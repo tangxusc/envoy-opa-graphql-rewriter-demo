@@ -6,7 +6,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/open-policy-agent/opa/v1/types"
+
+	"authz-server/internal/privilege"
 )
 
 const decisionQuery = "data.graphqlapi.authz.decision"
@@ -23,6 +27,8 @@ type UserInput struct {
 	Authenticated bool     `json:"authenticated"`
 	Subject       string   `json:"subject"`
 	Roles         []string `json:"roles"`
+	CurrentTime   string   `json:"current_time"` // ISO 8601 格式当前时间
+	Privileges    string   `json:"privileges"`   // base64 编码的 Bloom Filter
 }
 
 // RequestInput 传递给 OPA 策略的请求信息。
@@ -53,6 +59,25 @@ func NewEvaluator(ctx context.Context, policyPath string) (*Evaluator, error) {
 	prepared, err := rego.New(
 		rego.Query(decisionQuery),
 		rego.Module(policyPath, string(module)),
+		// 注册自定义内置函数 hasPrivilege(privileges_string, privilege_name)
+		rego.Function2(
+			&rego.Function{
+				Name: "hasPrivilege",
+				Decl: types.NewFunction(types.Args(types.S, types.S), types.B),
+			},
+			func(_ rego.BuiltinContext, a, b *ast.Term) (*ast.Term, error) {
+				privStr, ok1 := a.Value.(ast.String)
+				privName, ok2 := b.Value.(ast.String)
+				if !ok1 || !ok2 {
+					return nil, fmt.Errorf("hasPrivilege: expected two string arguments")
+				}
+				has, err := privilege.HasPrivilege(string(privStr), string(privName))
+				if err != nil {
+					return nil, err
+				}
+				return ast.BooleanTerm(has), nil
+			},
+		),
 	).PrepareForEval(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("prepare decision query: %w", err)

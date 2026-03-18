@@ -53,6 +53,26 @@ func TestParseFromHeader_ValidToken(t *testing.T) {
 	}
 }
 
+func TestParseFromHeader_PrivilegesField(t *testing.T) {
+	t.Parallel()
+	tok := signTestToken(t, &Claims{
+		Roles:      []string{"admin"},
+		Privileges: "dGVzdC1wcml2aWxlZ2Vz",
+		RegisteredClaims: gojwt.RegisteredClaims{
+			Subject:   "alice",
+			ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+
+	info, err := ParseFromHeader("Bearer " + tok)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.Privileges != "dGVzdC1wcml2aWxlZ2Vz" {
+		t.Errorf("Privileges = %q, want %q", info.Privileges, "dGVzdC1wcml2aWxlZ2Vz")
+	}
+}
+
 func TestParseFromHeader_ExpiredToken(t *testing.T) {
 	t.Parallel()
 	tok := signTestToken(t, &Claims{

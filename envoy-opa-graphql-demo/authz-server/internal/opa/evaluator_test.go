@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
+
+	"authz-server/internal/privilege"
 )
 
 func testPolicyPath(t *testing.T) string {
@@ -24,6 +27,22 @@ func newTestEvaluator(t *testing.T) *Evaluator {
 		t.Fatalf("NewEvaluator: %v", err)
 	}
 	return eval
+}
+
+// buildTestUserInput is a helper to construct UserInput with privileges encoded from roles.
+func buildTestUserInput(t *testing.T, authenticated bool, subject string, roles []string) UserInput {
+	t.Helper()
+	privStr, err := privilege.Encode(roles)
+	if err != nil {
+		t.Fatalf("privilege.Encode: %v", err)
+	}
+	return UserInput{
+		Authenticated: authenticated,
+		Subject:       subject,
+		Roles:         roles,
+		CurrentTime:   time.Now().UTC().Format(time.RFC3339),
+		Privileges:    privStr,
+	}
 }
 
 func TestNewEvaluator_ValidPolicy(t *testing.T) {
@@ -61,11 +80,7 @@ func TestEvaluate_AuthenticatedAllow(t *testing.T) {
 	eval := newTestEvaluator(t)
 
 	decision, err := eval.Evaluate(context.Background(), EvalInput{
-		User: UserInput{
-			Authenticated: true,
-			Subject:       "alice",
-			Roles:         []string{"admin"},
-		},
+		User: buildTestUserInput(t, true, "alice", []string{"admin"}),
 		Request: RequestInput{
 			Query:  `{ users { name salary } }`,
 			Fields: []string{"name", "salary"},
@@ -105,11 +120,7 @@ func TestEvaluate_DeniedFields(t *testing.T) {
 	eval := newTestEvaluator(t)
 
 	decision, err := eval.Evaluate(context.Background(), EvalInput{
-		User: UserInput{
-			Authenticated: true,
-			Subject:       "alice",
-			Roles:         []string{"user"},
-		},
+		User: buildTestUserInput(t, true, "alice", []string{"user"}),
 		Request: RequestInput{
 			Query:  `{ users { name salary } }`,
 			Fields: []string{"name", "salary"},
@@ -137,11 +148,7 @@ func TestEvaluate_AdminNoFieldDenied(t *testing.T) {
 	eval := newTestEvaluator(t)
 
 	decision, err := eval.Evaluate(context.Background(), EvalInput{
-		User: UserInput{
-			Authenticated: true,
-			Subject:       "bob",
-			Roles:         []string{"admin"},
-		},
+		User: buildTestUserInput(t, true, "bob", []string{"admin"}),
 		Request: RequestInput{
 			Query:  `{ users { name salary } }`,
 			Fields: []string{"name", "salary"},
@@ -169,6 +176,60 @@ func TestEvaluate_EmptyInput(t *testing.T) {
 	// With empty input, user is unauthenticated -> deny
 	if decision.Allow {
 		t.Error("expected Allow=false for empty input")
+	}
+}
+
+func TestEvaluate_HRCanReadSalary(t *testing.T) {
+	t.Parallel()
+	eval := newTestEvaluator(t)
+
+	decision, err := eval.Evaluate(context.Background(), EvalInput{
+		User: buildTestUserInput(t, true, "carol", []string{"hr"}),
+		Request: RequestInput{
+			Query:  `{ users { name salary } }`,
+			Fields: []string{"name", "salary"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if !decision.Allow {
+		t.Error("expected Allow=true for hr")
+	}
+	// HR has read:salary privilege, so salary should NOT be denied
+	for _, f := range decision.DeniedFields {
+		if f == "salary" {
+			t.Error("expected salary NOT in denied_fields for hr role")
+		}
+	}
+}
+
+func TestEvaluate_HasPrivilegeBuiltin(t *testing.T) {
+	t.Parallel()
+	eval := newTestEvaluator(t)
+
+	// User role does NOT have read:salary -> salary should be denied
+	decision, err := eval.Evaluate(context.Background(), EvalInput{
+		User: buildTestUserInput(t, true, "dave", []string{"user"}),
+		Request: RequestInput{
+			Query:  `{ users { name salary } }`,
+			Fields: []string{"name", "salary"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if !decision.Allow {
+		t.Error("expected Allow=true")
+	}
+	found := false
+	for _, f := range decision.DeniedFields {
+		if f == "salary" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected salary in denied_fields for user role without read:salary")
 	}
 }
 

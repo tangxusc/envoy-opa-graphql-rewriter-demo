@@ -12,7 +12,18 @@ import (
 
 	"authz-server/internal/jwt"
 	"authz-server/internal/opa"
+	"authz-server/internal/privilege"
 )
+
+// mustEncodePrivileges is a test helper that encodes roles into a privileges string.
+func mustEncodePrivileges(t *testing.T, roles []string) string {
+	t.Helper()
+	privStr, err := privilege.Encode(roles)
+	if err != nil {
+		t.Fatalf("privilege.Encode: %v", err)
+	}
+	return privStr
+}
 
 // makeCheckRequest builds a minimal Envoy CheckRequest for testing.
 func makeCheckRequest(authHeader, body string) *authv3.CheckRequest {
@@ -60,6 +71,7 @@ func TestCheck_Allowed(t *testing.T) {
 		return &jwt.UserInfo{
 			Subject:       "alice",
 			Roles:         []string{"admin"},
+			Privileges:    mustEncodePrivileges(t, []string{"admin"}),
 			Authenticated: true,
 		}, nil
 	}
@@ -126,7 +138,7 @@ func TestCheck_InvalidBody(t *testing.T) {
 	origJWT := jwtParseFromHeader
 	defer func() { jwtParseFromHeader = origJWT }()
 	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
-		return &jwt.UserInfo{Authenticated: true, Subject: "alice", Roles: []string{"admin"}}, nil
+		return &jwt.UserInfo{Authenticated: true, Subject: "alice", Roles: []string{"admin"}, Privileges: mustEncodePrivileges(t, []string{"admin"})}, nil
 	}
 
 	eval := fakeEvaluator(t)
@@ -154,6 +166,7 @@ func TestCheck_RewrittenBody(t *testing.T) {
 		return &jwt.UserInfo{
 			Subject:       "alice",
 			Roles:         []string{"user"}, // non-admin -> salary denied
+			Privileges:    mustEncodePrivileges(t, []string{"user"}),
 			Authenticated: true,
 		}, nil
 	}
@@ -206,6 +219,7 @@ func TestCheck_RewriteError(t *testing.T) {
 		return &jwt.UserInfo{
 			Subject:       "alice",
 			Roles:         []string{"user"},
+			Privileges:    mustEncodePrivileges(t, []string{"user"}),
 			Authenticated: true,
 		}, nil
 	}
@@ -324,7 +338,7 @@ func TestCheck_EmptyBody(t *testing.T) {
 	origJWT := jwtParseFromHeader
 	defer func() { jwtParseFromHeader = origJWT }()
 	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
-		return &jwt.UserInfo{Authenticated: true, Subject: "alice", Roles: []string{"admin"}}, nil
+		return &jwt.UserInfo{Authenticated: true, Subject: "alice", Roles: []string{"admin"}, Privileges: mustEncodePrivileges(t, []string{"admin"})}, nil
 	}
 
 	eval := fakeEvaluator(t)
@@ -345,7 +359,7 @@ func TestCheck_NilAttributes(t *testing.T) {
 	origJWT := jwtParseFromHeader
 	defer func() { jwtParseFromHeader = origJWT }()
 	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
-		return &jwt.UserInfo{Authenticated: true, Subject: "alice", Roles: []string{"admin"}}, nil
+		return &jwt.UserInfo{Authenticated: true, Subject: "alice", Roles: []string{"admin"}, Privileges: mustEncodePrivileges(t, []string{"admin"})}, nil
 	}
 
 	eval := fakeEvaluator(t)
@@ -393,6 +407,7 @@ func TestCheck_SubscriptionAllowed(t *testing.T) {
 		return &jwt.UserInfo{
 			Subject:       "alice",
 			Roles:         []string{"admin"},
+			Privileges:    mustEncodePrivileges(t, []string{"admin"}),
 			Authenticated: true,
 		}, nil
 	}
@@ -424,6 +439,7 @@ func TestCheck_SubscriptionRewritten(t *testing.T) {
 		return &jwt.UserInfo{
 			Subject:       "bob",
 			Roles:         []string{"user"},
+			Privileges:    mustEncodePrivileges(t, []string{"user"}),
 			Authenticated: true,
 		}, nil
 	}

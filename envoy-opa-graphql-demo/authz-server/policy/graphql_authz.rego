@@ -11,9 +11,9 @@ deny contains "unauthenticated request" if {
 	not input.user.authenticated
 }
 
-# 管理员可读取任意员工薪资
+# 使用 hasPrivilege 检查薪资读取权限
 can_read_salary if {
-	input.user.roles[_] == "admin"
+	hasPrivilege(input.user.privileges, "read:salary")
 }
 
 # 最终决策
@@ -23,7 +23,7 @@ decision := {
 	"reason": concat("; ", deny),
 }
 
-# 非 admin 用户 salary 字段被拒绝（适用于 query / mutation / subscription）
+# 无 read:salary 权限的用户，salary 字段被拒绝
 denied_fields contains "salary" if {
 	input.user.authenticated
 	not can_read_salary

@@ -28,16 +28,15 @@ decision := d if {
     }
 }
 
-# Salary field is denied for non-admin roles.
+# Salary field is denied for users without read:salary privilege.
 denied_fields contains "salary" if {
     some field in input.request.fields
     field == "salary"
-    not is_admin
+    not has_salary_privilege
 }
 
-default is_admin := false
+default has_salary_privilege := false
 
-is_admin if {
-    some role in input.user.roles
-    role == "admin"
+has_salary_privilege if {
+    hasPrivilege(input.user.privileges, "read:salary")
 }

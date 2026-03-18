@@ -5,12 +5,15 @@ import (
 	"time"
 
 	gojwt "github.com/golang-jwt/jwt/v5"
+
+	"authz-server/internal/privilege"
 )
 
 const secret = "demo-secret"
 
 type Claims struct {
-	Roles []string `json:"roles"`
+	Roles      []string `json:"roles"`
+	Privileges string   `json:"privileges"`
 	gojwt.RegisteredClaims
 }
 
@@ -32,8 +35,13 @@ func main() {
 }
 
 func issueToken(subject string, roles []string, ttl time.Duration) (string, error) {
+	privStr, err := privilege.Encode(roles)
+	if err != nil {
+		return "", fmt.Errorf("privilege encode: %w", err)
+	}
 	claims := Claims{
-		Roles: roles,
+		Roles:      roles,
+		Privileges: privStr,
 		RegisteredClaims: gojwt.RegisteredClaims{
 			Subject:   subject,
 			IssuedAt:  gojwt.NewNumericDate(time.Now()),

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"strings"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -71,6 +72,8 @@ func (s *Server) Check(ctx context.Context, req *authv3.CheckRequest) (*authv3.C
 			Authenticated: userInfo.Authenticated,
 			Subject:       userInfo.Subject,
 			Roles:         userInfo.Roles,
+			CurrentTime:   time.Now().UTC().Format(time.RFC3339),
+			Privileges:    userInfo.Privileges,
 		},
 		Request: opa.RequestInput{
 			Query:         gqlBody.Query,
