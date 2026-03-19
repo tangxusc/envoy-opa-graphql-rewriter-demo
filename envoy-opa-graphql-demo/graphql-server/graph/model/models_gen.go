@@ -8,6 +8,8 @@ type Employee struct {
 	Salary int    `json:"salary"`
 }
 
+func (Employee) IsEntity() {}
+
 type Mutation struct {
 }
 

@@ -22,7 +22,7 @@ static_resources:
                         - match:
                             prefix: "/"
                           route:
-                            cluster: graphql_service
+                            cluster: cosmo_router
                             timeout: 0s  # 禁用 route 超时（SSE 无终止时间）
                 http_filters:
                   # 1. ext_authz: 将请求发送给 authz-server 进行鉴权
@@ -78,19 +78,19 @@ static_resources:
                       address: authz-server
                       port_value: 9001
 
-    - name: graphql_service
+    - name: cosmo_router
       connect_timeout: 5s
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
       load_assignment:
-        cluster_name: graphql_service
+        cluster_name: cosmo_router
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: graphql-server
-                      port_value: 8080
+                      address: cosmo-router
+                      port_value: 3002
 
 admin:
   address:

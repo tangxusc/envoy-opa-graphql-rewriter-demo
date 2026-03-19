@@ -1,0 +1,16 @@
+version: 1
+subgraphs:
+  - name: employees
+    routing_url: http://graphql-server:8080/query
+    schema:
+      file: ../graphql-server/graph/schema.graphqls
+
+  - name: todos
+    routing_url: http://todo-server:8081/query
+    schema:
+      file: ../todo-server/graph/schema.graphqls
+
+  - name: todo-events
+    routing_url: http://todo-events.local/graphql
+    schema:
+      file: ./edfs.graphqls

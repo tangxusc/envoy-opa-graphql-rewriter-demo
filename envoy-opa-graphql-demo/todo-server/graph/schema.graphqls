@@ -1,0 +1,26 @@
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key", "@external"])
+
+type Todo @key(fields: "id") {
+  id: ID!
+  employeeID: ID!
+  content: String!
+  updatedAt: String!
+  deleted: Boolean!
+}
+
+type Query {
+  employeeTodos(employeeID: ID!): [Todo!]!
+  todoByID(id: ID!): Todo
+}
+
+type Mutation {
+  createTodo(employeeID: ID!, content: String!): Todo!
+  updateTodo(id: ID!, content: String!): Todo!
+  deleteTodo(id: ID!): Todo!
+}
+
+extend type Employee @key(fields: "id") {
+  id: ID! @external
+  todos: [Todo!]!
+}

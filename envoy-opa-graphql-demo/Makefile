@@ -1,4 +1,4 @@
-.PHONY: up down build logs gen-token test-anon test-admin test-user test-mutation test-subscribe-admin test-subscribe-user clean
+.PHONY: up down build logs gen-token compose-router-config test-anon test-admin test-user test-mutation test-subscribe-admin test-subscribe-user test-federation-todos clean
 
 up: build
 	docker compose up -d
@@ -14,6 +14,9 @@ logs:
 
 gen-token:
 	cd authz-server && go run cmd/gen-token/main.go
+
+compose-router-config:
+	npx -y wgc@latest router compose --input ./cosmo/graph.yaml --out ./cosmo/config.json
 
 test-anon:
 	@echo "=== 测试匿名请求 (应返回 403) ==="
@@ -45,6 +48,10 @@ test-subscribe-user:
 	@echo "=== 测试普通用户 SSE Subscription (salary 应被过滤) ==="
 	@echo "请先运行 make gen-token 获取 user token，然后执行:"
 	@echo 'curl -N -H "Accept: text/event-stream" -H "Authorization: Bearer <USER_TOKEN>" -H "Content-Type: application/json" -d '"'"'{"query":"subscription { employeeUpdated { id name salary } }"}'"'"' http://localhost:10000/query'
+
+test-federation-todos:
+	@echo "=== 测试联邦 Employee.todos 查询 ==="
+	@echo 'curl -s http://localhost:10000/query -H "Content-Type: application/json" -d '"'"'{"query":"{ employeeByID(id:\"emp-1\") { id name todos { id content updatedAt deleted } } }"}'"'"' | jq .'
 
 clean:
 	docker compose down --rmi all --volumes

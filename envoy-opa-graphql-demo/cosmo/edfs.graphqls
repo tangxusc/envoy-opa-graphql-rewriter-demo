@@ -1,0 +1,33 @@
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key", "@external"])
+  @link(url: "https://openfed.dev/v1.0", import: ["@openfed__subscriptionFilter"])
+  @link(url: "https://specs.edfs.dev/v1.0", import: ["@edfs__kafkaSubscribe"])
+
+directive @openfed__subscriptionFilter(condition: openfed__SubscriptionFilterCondition!) on FIELD_DEFINITION
+
+input openfed__SubscriptionFilterCondition {
+  AND: [openfed__SubscriptionFilterCondition!]
+  OR: [openfed__SubscriptionFilterCondition!]
+  NOT: openfed__SubscriptionFilterCondition
+  IN: openfed__SubscriptionFieldCondition
+  NOT_IN: openfed__SubscriptionFieldCondition
+}
+
+input openfed__SubscriptionFieldCondition {
+  fieldPath: String!
+  values: [openfed__Any!]!
+}
+
+scalar openfed__Any
+
+directive @edfs__kafkaSubscribe(topics: [String!]!, providerId: String!) on FIELD_DEFINITION
+
+type Employee @key(fields: "id", resolvable: false) {
+  id: ID! @external
+}
+
+type Subscription {
+  employeeTodoChanged(employeeID: ID!): Employee!
+    @edfs__kafkaSubscribe(topics: ["employee.todo.events"], providerId: "demo-kafka")
+    @openfed__subscriptionFilter(condition: { IN: { fieldPath: "id", values: ["{{ args.employeeID }}"] } })
+}

@@ -1,0 +1,16 @@
+version: "1"
+
+listen_addr: "0.0.0.0:3002"
+dev_mode: true
+
+execution_config:
+  file:
+    path: "/config/config.json"
+
+events:
+  providers:
+    - id: "demo-kafka"
+      provider:
+        kafka:
+          brokers:
+            - "kafka:9092"

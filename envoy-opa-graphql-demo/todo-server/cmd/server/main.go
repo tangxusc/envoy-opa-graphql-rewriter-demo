@@ -3,34 +3,32 @@ package main
 import (
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/99designs/gqlgen/graphql/handler/lru"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
-	"github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2/ast"
 
-	"graphql-server/graph"
-	"graphql-server/graph/generated"
+	"todo-server/graph"
+	"todo-server/graph/generated"
 )
 
 func main() {
-	resolver := graph.NewResolver()
-	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: resolver}))
+	publisher, err := graph.NewKafkaPublisherFromEnv()
+	if err != nil {
+		log.Fatalf("init event publisher: %v", err)
+	}
 
-	// SSE 必须在 POST 之前注册，以便先匹配 Accept: text/event-stream
-	srv.AddTransport(transport.SSE{})
-	srv.AddTransport(transport.Websocket{
-		KeepAlivePingInterval: 15 * time.Second,
-		Upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
-		},
-	})
+	resolver := graph.NewResolver(publisher)
+	defer func() {
+		if err := resolver.Close(); err != nil {
+			log.Printf("close publisher: %v", err)
+		}
+	}()
+
+	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: resolver}))
 	srv.AddTransport(transport.Options{})
 	srv.AddTransport(transport.GET{})
 	srv.AddTransport(transport.POST{})
@@ -43,11 +41,11 @@ func main() {
 	})
 
 	mux := http.NewServeMux()
-	mux.Handle("/", playground.Handler("GraphQL Playground", "/query"))
+	mux.Handle("/", playground.Handler("Todo GraphQL Playground", "/query"))
 	mux.Handle("/query", srv)
 
-	log.Println("graphql-server listening on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	log.Println("todo-server listening on :8081")
+	if err := http.ListenAndServe(":8081", mux); err != nil {
 		log.Fatalf("http server: %v", err)
 	}
 }

@@ -10,7 +10,7 @@ services:
     depends_on:
       authz-server:
         condition: service_started
-      graphql-server:
+      cosmo-router:
         condition: service_started
     networks:
       - demo-net
@@ -26,6 +26,53 @@ services:
     build:
       context: ./graphql-server
       dockerfile: Dockerfile
+    networks:
+      - demo-net
+
+  todo-server:
+    build:
+      context: ./todo-server
+      dockerfile: Dockerfile
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: employee.todo.events
+    depends_on:
+      kafka:
+        condition: service_started
+    networks:
+      - demo-net
+
+  kafka:
+    image: bitnami/kafka:3.9
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_KRAFT_CLUSTER_ID: MDEyMzQ1Njc4OTEyMzQ2Nw
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    networks:
+      - demo-net
+
+  cosmo-router:
+    image: ghcr.io/wundergraph/cosmo/router:latest
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./cosmo:/config:ro
+    environment:
+      ROUTER_CONFIG_PATH: /config/router.yaml
+    depends_on:
+      graphql-server:
+        condition: service_started
+      todo-server:
+        condition: service_started
+      kafka:
+        condition: service_started
     networks:
       - demo-net
 
