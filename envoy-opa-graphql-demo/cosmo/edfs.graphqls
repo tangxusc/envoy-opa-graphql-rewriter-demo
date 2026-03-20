@@ -29,5 +29,9 @@ type Employee @key(fields: "id", resolvable: false) {
 type Subscription {
   employeeTodoChanged(employeeID: ID!): Employee!
     @edfs__kafkaSubscribe(topics: ["employee.todo.events"], providerId: "demo-kafka")
-    @openfed__subscriptionFilter(condition: { IN: { fieldPath: "id", values: ["{{ args.employeeID }}"] } })
+    @openfed__subscriptionFilter(
+      condition: {
+        IN: { fieldPath: "id", values: ["{{ args.employeeID }}"] }
+      }
+    )
 }

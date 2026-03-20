@@ -14,22 +14,23 @@ docker-compose up -d --build
 
 ### 2) 终端 A：建立 Router 订阅（SSE / SSE_POST）
 
+> 说明：当前 Cosmo EDFS 参数模板在变量传参场景下存在不稳定命中，联调时请使用字面量参数（如 `employeeID:"emp-1"`）。
+
 #### 方式 A：SSE_POST（推荐）
 
 ```bash
-curl -N http://localhost:3002/graphql \
+curl -N http://localhost:3002/query \
   -H 'Accept: text/event-stream' \
   -H 'Content-Type: application/json' \
-  -d '{"query":"subscription($employeeID: ID!){ employeeTodoChanged(employeeID:$employeeID){ id name todos { id content updatedAt deleted } } }","variables":{"employeeID":"emp-1"}}'
+  -d '{"query":"subscription { employeeTodoChanged(employeeID:\"emp-1\"){ id name todos { id content updatedAt deleted } } }"}'
 ```
 
 #### 方式 B：SSE（GET）
 
 ```bash
-curl -N -G http://localhost:3002/graphql \
+curl -N -G http://localhost:3002/query \
   -H 'Accept: text/event-stream' \
-  --data-urlencode 'query=subscription($employeeID: ID!){ employeeTodoChanged(employeeID:$employeeID){ id name todos { id content updatedAt deleted } } }' \
-  --data-urlencode 'variables={"employeeID":"emp-1"}'
+  --data-urlencode 'query=subscription { employeeTodoChanged(employeeID:"emp-1"){ id name todos { id content updatedAt deleted } } }'
 ```
 
 ### 3) 终端 B：监听 Kafka 事件
@@ -45,7 +46,7 @@ docker-compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
 ### 4) 终端 C：调用 createTodo
 
 ```bash
-curl -s http://localhost:3002/graphql \
+curl -s http://localhost:3002/query \
   -H 'Content-Type: application/json' \
   -d '{"query":"mutation($employeeID:ID!,$content:String!){ createTodo(employeeID:$employeeID, content:$content){ id employeeID content updatedAt deleted } }","variables":{"employeeID":"emp-1","content":"e2e-'$(date +%s)'"}}' | jq .
 ```

@@ -16,6 +16,7 @@ const (
 )
 
 type TodoEvent struct {
+	Typename   string `json:"__typename,omitempty"`
 	EventID    string `json:"event_id"`
 	EventType  string `json:"event_type"`
 	OccurredAt string `json:"occurred_at"`

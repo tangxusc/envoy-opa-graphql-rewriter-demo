@@ -121,6 +121,7 @@ func (r *Resolver) listTodosByEmployeeNoLock(employeeID string) []*model.Todo {
 
 func (r *Resolver) publishTodoEvent(ctx context.Context, eventType string, todo *model.Todo) error {
 	event := TodoEvent{
+		Typename:   "Employee",
 		EventID:    fmt.Sprintf("%s-%d", eventType, time.Now().UTC().UnixNano()),
 		EventType:  eventType,
 		OccurredAt: nowRFC3339(),
