@@ -1,4 +1,4 @@
-.PHONY: up down build logs gen-token compose-router-config test-anon test-admin test-user test-mutation test-subscribe-admin test-subscribe-user test-federation-todos clean
+.PHONY: up down build logs gen-token compose-router-config test-anon test-admin test-user test-mutation test-subscribe-admin test-subscribe-user test-federation-todos test-integration-user-id clean
 
 up: build
 	docker compose up -d
@@ -52,6 +52,9 @@ test-subscribe-user:
 test-federation-todos:
 	@echo "=== 测试联邦 Employee.todos 查询 ==="
 	@echo 'curl -s http://localhost:10000/query -H "Content-Type: application/json" -d '"'"'{"query":"{ employeeByID(id:\"emp-1\") { id name todos { id content updatedAt deleted } } }"}'"'"' | jq .'
+
+test-integration-user-id:
+	@bash scripts/test-integration-user-id.sh
 
 clean:
 	docker compose down --rmi all --volumes

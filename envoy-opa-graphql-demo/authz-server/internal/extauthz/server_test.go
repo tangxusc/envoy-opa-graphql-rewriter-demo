@@ -53,6 +53,16 @@ func fakeEvaluator(t *testing.T) *opa.Evaluator {
 	return eval
 }
 
+func findHeader(headers []*corev3.HeaderValueOption, key string) (string, bool) {
+	for _, h := range headers {
+		hv := h.GetHeader()
+		if hv.GetKey() == key {
+			return hv.GetValue(), true
+		}
+	}
+	return "", false
+}
+
 func TestNewServer(t *testing.T) {
 	t.Parallel()
 	eval := fakeEvaluator(t)
@@ -89,6 +99,17 @@ func TestCheck_Allowed(t *testing.T) {
 	if resp.GetStatus().GetCode() != int32(codes.OK) {
 		t.Errorf("status code = %d, want OK", resp.GetStatus().GetCode())
 	}
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OkResponse")
+	}
+	userID, found := findHeader(okResp.GetHeaders(), headerUserID)
+	if !found {
+		t.Fatalf("expected %s header", headerUserID)
+	}
+	if userID != "alice" {
+		t.Errorf("%s = %q, want %q", headerUserID, userID, "alice")
+	}
 }
 
 func TestCheck_Denied_Unauthenticated(t *testing.T) {
@@ -111,6 +132,11 @@ func TestCheck_Denied_Unauthenticated(t *testing.T) {
 	}
 	if resp.GetStatus().GetCode() == int32(codes.OK) {
 		t.Error("expected non-OK status for unauthenticated user")
+	}
+	for _, h := range resp.GetDeniedResponse().GetHeaders() {
+		if h.GetHeader().GetKey() == headerUserID {
+			t.Fatalf("did not expect denied response to include %s", headerUserID)
+		}
 	}
 }
 
@@ -195,15 +221,19 @@ func TestCheck_RewrittenBody(t *testing.T) {
 	if okResp == nil {
 		t.Fatal("expected OkResponse")
 	}
-	found := false
-	for _, h := range okResp.GetHeaders() {
-		if h.GetHeader().GetKey() == "x-rewritten-body" {
-			found = true
-			break
-		}
-	}
+	rewritten, found := findHeader(okResp.GetHeaders(), headerRewrittenBody)
 	if !found {
 		t.Error("expected x-rewritten-body header")
+	}
+	if rewritten == "" {
+		t.Error("expected x-rewritten-body to be non-empty")
+	}
+	userID, found := findHeader(okResp.GetHeaders(), headerUserID)
+	if !found {
+		t.Errorf("expected %s header", headerUserID)
+	}
+	if userID != "alice" {
+		t.Errorf("%s = %q, want %q", headerUserID, userID, "alice")
 	}
 }
 
@@ -301,6 +331,11 @@ func TestDenied_CodeMapping(t *testing.T) {
 	if deniedResp2.GetStatus().GetCode() != 403 {
 		t.Errorf("HTTP code = %d, want 403", deniedResp2.GetStatus().GetCode())
 	}
+	for _, h := range deniedResp2.GetHeaders() {
+		if h.GetHeader().GetKey() == headerUserID {
+			t.Fatalf("did not expect denied response to include %s", headerUserID)
+		}
+	}
 }
 
 func TestAllowed(t *testing.T) {
@@ -311,6 +346,22 @@ func TestAllowed(t *testing.T) {
 	}
 }
 
+func TestAllowedWithUserID(t *testing.T) {
+	t.Parallel()
+	resp := allowedWithUserID("user-1")
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OkResponse")
+	}
+	userID, found := findHeader(okResp.GetHeaders(), headerUserID)
+	if !found {
+		t.Fatalf("expected %s header", headerUserID)
+	}
+	if userID != "user-1" {
+		t.Errorf("%s = %q, want %q", headerUserID, userID, "user-1")
+	}
+}
+
 func TestAllowedWithRewrittenBody(t *testing.T) {
 	t.Parallel()
 	resp := allowedWithRewrittenBody(`{"query":"{ name }"}`)
@@ -318,18 +369,15 @@ func TestAllowedWithRewrittenBody(t *testing.T) {
 	if okResp == nil {
 		t.Fatal("expected OkResponse")
 	}
-	var found bool
-	for _, h := range okResp.GetHeaders() {
-		hv := h.GetHeader()
-		if hv.GetKey() == "x-rewritten-body" {
-			found = true
-			if hv.GetValue() != `{"query":"{ name }"}` {
-				t.Errorf("header value = %q", hv.GetValue())
-			}
-		}
-	}
+	rewritten, found := findHeader(okResp.GetHeaders(), headerRewrittenBody)
 	if !found {
 		t.Error("expected x-rewritten-body header")
+	}
+	if rewritten != `{"query":"{ name }"}` {
+		t.Errorf("header value = %q", rewritten)
+	}
+	if _, hasUserID := findHeader(okResp.GetHeaders(), headerUserID); hasUserID {
+		t.Fatalf("did not expect %s header", headerUserID)
 	}
 }
 
@@ -352,6 +400,17 @@ func TestCheck_EmptyBody(t *testing.T) {
 	if resp.GetStatus().GetCode() != int32(codes.OK) {
 		t.Errorf("status code = %d, want OK", resp.GetStatus().GetCode())
 	}
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OkResponse")
+	}
+	userID, found := findHeader(okResp.GetHeaders(), headerUserID)
+	if !found {
+		t.Fatalf("expected %s header", headerUserID)
+	}
+	if userID != "alice" {
+		t.Errorf("%s = %q, want %q", headerUserID, userID, "alice")
+	}
 }
 
 // Verify that request without attributes doesn't panic
@@ -373,6 +432,17 @@ func TestCheck_NilAttributes(t *testing.T) {
 	// Empty request with authenticated user should be OK
 	if resp.GetStatus().GetCode() != int32(codes.OK) {
 		t.Errorf("status code = %d, want OK", resp.GetStatus().GetCode())
+	}
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OkResponse")
+	}
+	userID, found := findHeader(okResp.GetHeaders(), headerUserID)
+	if !found {
+		t.Fatalf("expected %s header", headerUserID)
+	}
+	if userID != "alice" {
+		t.Errorf("%s = %q, want %q", headerUserID, userID, "alice")
 	}
 }
 
@@ -425,6 +495,17 @@ func TestCheck_SubscriptionAllowed(t *testing.T) {
 	if resp.GetStatus().GetCode() != int32(codes.OK) {
 		t.Errorf("status code = %d, want OK", resp.GetStatus().GetCode())
 	}
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OkResponse")
+	}
+	userID, found := findHeader(okResp.GetHeaders(), headerUserID)
+	if !found {
+		t.Fatalf("expected %s header", headerUserID)
+	}
+	if userID != "alice" {
+		t.Errorf("%s = %q, want %q", headerUserID, userID, "alice")
+	}
 }
 
 func TestCheck_SubscriptionRewritten(t *testing.T) {
@@ -467,17 +548,14 @@ func TestCheck_SubscriptionRewritten(t *testing.T) {
 	if okResp == nil {
 		t.Fatal("expected OkResponse")
 	}
-	found := false
-	for _, h := range okResp.GetHeaders() {
-		if h.GetHeader().GetKey() == "x-rewritten-body" {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if _, found := findHeader(okResp.GetHeaders(), headerRewrittenBody); !found {
 		t.Error("expected x-rewritten-body header for subscription rewrite")
 	}
+	userID, found := findHeader(okResp.GetHeaders(), headerUserID)
+	if !found {
+		t.Errorf("expected %s header", headerUserID)
+	}
+	if userID != "bob" {
+		t.Errorf("%s = %q, want %q", headerUserID, userID, "bob")
+	}
 }
-
-// Suppress unused import warning
-var _ = corev3.HeaderValue{}

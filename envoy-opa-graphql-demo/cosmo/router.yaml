@@ -8,6 +8,12 @@ execution_config:
   file:
     path: "/config/config.json"
 
+headers:
+  all:
+    request:
+      - op: "propagate"
+        named: "x-user-id"
+
 events:
   providers:
     kafka:

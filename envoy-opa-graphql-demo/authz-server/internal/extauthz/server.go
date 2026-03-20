@@ -26,6 +26,11 @@ var (
 	rewriteBody        = rewriter.RewriteBody
 )
 
+const (
+	headerRewrittenBody = "x-rewritten-body"
+	headerUserID        = "x-user-id"
+)
+
 // Server 实现 Envoy ext_authz gRPC v3 接口。
 type Server struct {
 	evaluator *opa.Evaluator
@@ -104,10 +109,10 @@ func (s *Server) Check(ctx context.Context, req *authv3.CheckRequest) (*authv3.C
 			return denied(codes.Internal, "query rewrite failed"), nil
 		}
 		log.Printf("rewritten body: %s", string(rewrittenBody))
-		return allowedWithRewrittenBody(string(rewrittenBody)), nil
+		return allowedWithRewrittenBodyAndUserID(string(rewrittenBody), userInfo.Subject), nil
 	}
 
-	return allowed(), nil
+	return allowedWithUserID(userInfo.Subject), nil
 }
 
 func allowed() *authv3.CheckResponse {
@@ -120,19 +125,45 @@ func allowed() *authv3.CheckResponse {
 }
 
 func allowedWithRewrittenBody(body string) *authv3.CheckResponse {
+	return allowedWithRewrittenBodyAndUserID(body, "")
+}
+
+func allowedWithUserID(userID string) *authv3.CheckResponse {
+	headers := make([]*corev3.HeaderValueOption, 0, 1)
+	if userID != "" {
+		headers = append(headers, headerOption(headerUserID, userID))
+	}
 	return &authv3.CheckResponse{
 		Status: &status.Status{Code: int32(codes.OK)},
 		HttpResponse: &authv3.CheckResponse_OkResponse{
 			OkResponse: &authv3.OkHttpResponse{
-				Headers: []*corev3.HeaderValueOption{
-					{
-						Header: &corev3.HeaderValue{
-							Key:   "x-rewritten-body",
-							Value: body,
-						},
-					},
-				},
+				Headers: headers,
 			},
+		},
+	}
+}
+
+func allowedWithRewrittenBodyAndUserID(body, userID string) *authv3.CheckResponse {
+	headers := make([]*corev3.HeaderValueOption, 0, 2)
+	if userID != "" {
+		headers = append(headers, headerOption(headerUserID, userID))
+	}
+	headers = append(headers, headerOption(headerRewrittenBody, body))
+	return &authv3.CheckResponse{
+		Status: &status.Status{Code: int32(codes.OK)},
+		HttpResponse: &authv3.CheckResponse_OkResponse{
+			OkResponse: &authv3.OkHttpResponse{
+				Headers: headers,
+			},
+		},
+	}
+}
+
+func headerOption(key, value string) *corev3.HeaderValueOption {
+	return &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{
+			Key:   key,
+			Value: value,
 		},
 	}
 }

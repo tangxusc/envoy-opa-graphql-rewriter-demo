@@ -44,7 +44,10 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", playground.Handler("GraphQL Playground", "/query"))
-	mux.Handle("/query", srv)
+	mux.Handle("/query", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("graphql request path=/query method=%s x-user-id=%s", r.Method, r.Header.Get("x-user-id"))
+		srv.ServeHTTP(w, r)
+	}))
 
 	log.Println("graphql-server listening on :8080")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
