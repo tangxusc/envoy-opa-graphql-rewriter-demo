@@ -62,10 +62,9 @@ services:
     image: ghcr.io/wundergraph/cosmo/router:latest
     ports:
       - "3002:3002"
+    command: ["/router", "-config", "/config/router.yaml"]
     volumes:
       - ./cosmo:/config:ro
-    environment:
-      ROUTER_CONFIG_PATH: /config/router.yaml
     depends_on:
       graphql-server:
         condition: service_started
