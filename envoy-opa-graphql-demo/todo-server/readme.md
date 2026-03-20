@@ -35,7 +35,7 @@ curl -N -G http://localhost:3002/graphql \
 ### 3) 终端 B：监听 Kafka 事件
 
 ```bash
-docker-compose exec kafka /opt/bitnami/kafka/bin/kafka-console-consumer.sh \
+docker-compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server kafka:9092 \
   --topic employee.todo.events \
   --timeout-ms 30000 \
