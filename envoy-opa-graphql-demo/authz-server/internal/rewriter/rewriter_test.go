@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
 )
 
 func mustMakeBody(t *testing.T, query string) []byte {
@@ -214,5 +217,30 @@ func TestRewriteBody_MutationRewrite(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "mutation") {
 		t.Errorf("expected mutation keyword to remain, got %s", out)
+	}
+}
+
+func TestRewriteBody_RemoveObjectFieldWithNestedFields(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employeeByID(id: "emp-1") { id name todos { id name } } }`)
+	out, err := RewriteBody(body, []string{"todos"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(string(out), "todos") {
+		t.Errorf("expected todos object field to be removed, got %s", out)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("output is not valid JSON: %v", err)
+	}
+	query, ok := payload["query"].(string)
+	if !ok {
+		t.Fatalf("rewritten query is not a string: %T", payload["query"])
+	}
+	if _, err := parser.ParseQuery(&ast.Source{Input: query}); err != nil {
+		t.Fatalf("rewritten query is invalid GraphQL: %v; query=%s", err, query)
 	}
 }

@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
 	"google.golang.org/grpc/codes"
 
 	"authz-server/internal/jwt"
@@ -47,6 +52,19 @@ func makeCheckRequest(authHeader, body string) *authv3.CheckRequest {
 func fakeEvaluator(t *testing.T) *opa.Evaluator {
 	t.Helper()
 	eval, err := opa.NewEvaluator(context.Background(), "../opa/testdata/test_policy.rego")
+	if err != nil {
+		t.Fatalf("NewEvaluator: %v", err)
+	}
+	return eval
+}
+
+func fakeEvaluatorWithPolicy(t *testing.T, policy string) *opa.Evaluator {
+	t.Helper()
+	policyPath := filepath.Join(t.TempDir(), "policy.rego")
+	if err := os.WriteFile(policyPath, []byte(policy), 0644); err != nil {
+		t.Fatalf("os.WriteFile(%s): %v", policyPath, err)
+	}
+	eval, err := opa.NewEvaluator(context.Background(), policyPath)
 	if err != nil {
 		t.Fatalf("NewEvaluator: %v", err)
 	}
@@ -557,5 +575,76 @@ func TestCheck_SubscriptionRewritten(t *testing.T) {
 	}
 	if userID != "bob" {
 		t.Errorf("%s = %q, want %q", headerUserID, userID, "bob")
+	}
+}
+
+func TestCheck_RewrittenBody_RemoveNestedObjectField(t *testing.T) {
+	origJWT := jwtParseFromHeader
+	defer func() { jwtParseFromHeader = origJWT }()
+	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
+		return &jwt.UserInfo{
+			Subject:       "user-1",
+			Roles:         []string{"user"},
+			Privileges:    mustEncodePrivileges(t, []string{"user"}),
+			Authenticated: true,
+		}, nil
+	}
+
+	eval := fakeEvaluatorWithPolicy(t, `
+package graphqlapi.authz
+
+import rego.v1
+
+default decision := {
+	"allow": false,
+	"denied_fields": [],
+	"reason": "denied by default",
+}
+
+decision := {
+	"allow": true,
+	"denied_fields": ["todos"],
+	"reason": "",
+} if {
+	input.user.authenticated
+}
+`)
+	s := NewServer(eval)
+
+	body, _ := json.Marshal(map[string]string{
+		"query": `{ employeeByID(id: "emp-1") { id name todos { id name } } }`,
+	})
+	req := makeCheckRequest("Bearer fake-token", string(body))
+
+	resp, err := s.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if resp.GetStatus().GetCode() != int32(codes.OK) {
+		t.Fatalf("status code = %d, want OK", resp.GetStatus().GetCode())
+	}
+
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OkResponse")
+	}
+	rewrittenBody, found := findHeader(okResp.GetHeaders(), headerRewrittenBody)
+	if !found {
+		t.Fatal("expected x-rewritten-body header")
+	}
+
+	var rewrittenPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(rewrittenBody), &rewrittenPayload); err != nil {
+		t.Fatalf("rewritten body is invalid JSON: %v", err)
+	}
+	rewrittenQuery, ok := rewrittenPayload["query"].(string)
+	if !ok {
+		t.Fatalf("rewritten query is not string: %T", rewrittenPayload["query"])
+	}
+	if strings.Contains(rewrittenQuery, "todos") {
+		t.Fatalf("expected todos field to be removed, got: %s", rewrittenQuery)
+	}
+	if _, err := parser.ParseQuery(&ast.Source{Input: rewrittenQuery}); err != nil {
+		t.Fatalf("rewritten query is invalid GraphQL: %v; query=%s", err, rewrittenQuery)
 	}
 }
