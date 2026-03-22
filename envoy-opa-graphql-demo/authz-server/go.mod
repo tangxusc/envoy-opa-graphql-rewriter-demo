@@ -3,6 +3,7 @@ module authz-server
 go 1.26.1
 
 require (
+	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/open-policy-agent/opa v1.14.1
@@ -14,7 +15,6 @@ require (
 require (
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.2 // indirect
-	github.com/bits-and-blooms/bloom/v3 v3.7.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect

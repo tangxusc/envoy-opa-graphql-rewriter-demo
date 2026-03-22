@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -49,17 +48,14 @@ type Evaluator struct {
 	prepared rego.PreparedEvalQuery
 }
 
-// NewEvaluator 从 rego 文件创建评估器。
+// NewEvaluator 从 rego 文件或目录创建评估器。
+// 支持:
+//   - 单个 .rego 文件路径
+//   - 目录路径 (递归加载所有 .rego 文件)
 func NewEvaluator(ctx context.Context, policyPath string) (*Evaluator, error) {
-	module, err := os.ReadFile(policyPath)
-	if err != nil {
-		return nil, fmt.Errorf("read policy file %q: %w", policyPath, err)
-	}
-
 	prepared, err := rego.New(
 		rego.Query(decisionQuery),
-		rego.Module(policyPath, string(module)),
-		// 注册自定义内置函数 hasPrivilege(privileges_string, privilege_name)
+		rego.Load([]string{policyPath}, nil),
 		rego.Function2(
 			&rego.Function{
 				Name: "hasPrivilege",

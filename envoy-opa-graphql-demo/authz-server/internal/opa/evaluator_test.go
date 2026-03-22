@@ -237,3 +237,98 @@ func TestEvaluate_HasPrivilegeBuiltin(t *testing.T) {
 func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
+
+func testPoliciesDirPath(t *testing.T) string {
+	t.Helper()
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve current file path")
+	}
+	return filepath.Join(filepath.Dir(currentFile), "testdata", "policies")
+}
+
+func testRecursiveDirPath(t *testing.T) string {
+	t.Helper()
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve current file path")
+	}
+	return filepath.Join(filepath.Dir(currentFile), "testdata", "recursive")
+}
+
+func TestNewEvaluator_Directory(t *testing.T) {
+	t.Parallel()
+	eval, err := NewEvaluator(context.Background(), testPoliciesDirPath(t))
+	if err != nil {
+		t.Fatalf("NewEvaluator from directory: %v", err)
+	}
+	if eval == nil {
+		t.Fatal("expected non-nil evaluator for directory")
+	}
+}
+
+func TestNewEvaluator_Subdirectory(t *testing.T) {
+	t.Parallel()
+	eval, err := NewEvaluator(context.Background(), testRecursiveDirPath(t))
+	if err != nil {
+		t.Fatalf("NewEvaluator from recursive directory: %v", err)
+	}
+	if eval == nil {
+		t.Fatal("expected non-nil evaluator for recursive directory")
+	}
+}
+
+func TestNewEvaluator_InvalidPath_SingleFile(t *testing.T) {
+	t.Parallel()
+	_, err := NewEvaluator(context.Background(), "/nonexistent/policy.rego")
+	if err == nil {
+		t.Fatal("expected error for invalid policy path")
+	}
+}
+
+func TestNewEvaluator_InvalidRegoInDirectory(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	badPath := filepath.Join(dir, "bad.rego")
+	if err := writeFile(badPath, "invalid syntax {{{"); err != nil {
+		t.Fatalf("writeFile: %v", err)
+	}
+	_, err := NewEvaluator(context.Background(), dir)
+	if err == nil {
+		t.Fatal("expected error for directory containing invalid rego")
+	}
+}
+
+func TestEvaluate_MultiFileMerged(t *testing.T) {
+	t.Parallel()
+	eval, err := NewEvaluator(context.Background(), testPoliciesDirPath(t))
+	if err != nil {
+		t.Fatalf("NewEvaluator: %v", err)
+	}
+
+	decision, err := eval.Evaluate(context.Background(), EvalInput{
+		User: buildTestUserInput(t, true, "alice", []string{"user"}),
+		Request: RequestInput{
+			Query:  `{ users { name salary email } }`,
+			Fields: []string{"name", "salary", "email"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if !decision.Allow {
+		t.Error("expected Allow=true for authenticated user")
+	}
+
+	denied := make(map[string]bool)
+	for _, f := range decision.DeniedFields {
+		denied[f] = true
+	}
+
+	if !denied["salary"] {
+		t.Error("expected salary in denied_fields (from authz.rego)")
+	}
+	if !denied["email"] {
+		t.Error("expected email in denied_fields (from rbac.rego)")
+	}
+}
