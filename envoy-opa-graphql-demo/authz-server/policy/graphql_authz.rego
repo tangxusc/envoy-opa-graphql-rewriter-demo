@@ -23,8 +23,8 @@ decision := {
 	"reason": concat("; ", deny),
 }
 
-# 无 read:salary 权限的用户，salary 字段被拒绝
-denied_fields contains "salary" if {
+# 无 read:salary 权限的用户，salary 字段在 employeeByID 路径下被拒绝
+denied_fields contains "employeeByID.salary" if {
 	input.user.authenticated
 	not can_read_salary
 }

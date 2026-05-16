@@ -340,3 +340,123 @@ func TestRewriteBody_BatchQuery_NoQueryField(t *testing.T) {
 		t.Errorf("expected title to remain, got %s", out)
 	}
 }
+
+func TestPathDenied_BasicPath(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { name salary } }`)
+	out, err := RewriteBody(body, []string{"employees.salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary removed under employees, got %s", out)
+	}
+	if !strings.Contains(string(out), "name") {
+		t.Errorf("expected name to remain, got %s", out)
+	}
+}
+
+func TestPathDenied_NoMatchAtWrongLevel(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { name salary } company { salary revenue } }`)
+	out, err := RewriteBody(body, []string{"employees.salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	query := payload["query"].(string)
+	if !strings.Contains(query, "salary") {
+		t.Errorf("expected company.salary to remain, got query: %s", query)
+	}
+}
+
+func TestPathDenied_MultiLevel(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { profile { salary bio } } }`)
+	out, err := RewriteBody(body, []string{"employees.profile.salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary removed, got %s", out)
+	}
+	if !strings.Contains(string(out), "bio") {
+		t.Errorf("expected bio to remain, got %s", out)
+	}
+}
+
+func TestPathDenied_MultiLevel_NoMatchShallow(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { salary profile { salary } } }`)
+	out, err := RewriteBody(body, []string{"employees.profile.salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	query := payload["query"].(string)
+	if strings.Contains(query, "profile") {
+		t.Errorf("expected profile removed (empty), got: %s", query)
+	}
+	if !strings.Contains(query, "salary") {
+		t.Errorf("expected shallow salary to remain, got: %s", query)
+	}
+}
+
+func TestPathDenied_GlobalStillWorks(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { salary } company { salary } }`)
+	_, err := RewriteBody(body, []string{"salary"})
+	if !errors.Is(err, ErrEmptyQuery) {
+		t.Fatalf("expected ErrEmptyQuery, got %v", err)
+	}
+}
+
+func TestPathDenied_MixedGlobalAndPath(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { salary ssn } company { salary ssn } }`)
+	out, err := RewriteBody(body, []string{"ssn", "employees.salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "ssn") {
+		t.Errorf("expected ssn removed globally, got %s", out)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	query := payload["query"].(string)
+	if !strings.Contains(query, "salary") {
+		t.Errorf("expected company.salary to remain, got: %s", query)
+	}
+}
+
+func TestPathDenied_InlineFragment(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { ... on Manager { salary bonus } } }`)
+	out, err := RewriteBody(body, []string{"employees.salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary removed, got %s", out)
+	}
+	if !strings.Contains(string(out), "bonus") {
+		t.Errorf("expected bonus to remain, got %s", out)
+	}
+}
+
+func TestPathDenied_EmptyAfterPathFilter(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { salary } }`)
+	_, err := RewriteBody(body, []string{"employees.salary"})
+	if !errors.Is(err, ErrEmptyQuery) {
+		t.Fatalf("expected ErrEmptyQuery, got %v", err)
+	}
+}
