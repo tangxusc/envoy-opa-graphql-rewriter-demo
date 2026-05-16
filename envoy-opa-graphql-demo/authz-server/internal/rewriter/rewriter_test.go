@@ -2,6 +2,7 @@ package rewriter
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -66,17 +67,9 @@ func TestRewriteBody_MultipleFieldRemoval(t *testing.T) {
 func TestRewriteBody_AllFieldsRemoved(t *testing.T) {
 	t.Parallel()
 	body := mustMakeBody(t, `{ users { salary } }`)
-	out, err := RewriteBody(body, []string{"salary"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if strings.Contains(string(out), "salary") {
-		t.Errorf("expected salary to be removed, got %s", out)
-	}
-	// Should still parse as valid JSON
-	var m map[string]interface{}
-	if err := json.Unmarshal(out, &m); err != nil {
-		t.Errorf("output is not valid JSON: %v", err)
+	_, err := RewriteBody(body, []string{"salary"})
+	if !errors.Is(err, ErrEmptyQuery) {
+		t.Fatalf("expected ErrEmptyQuery, got %v", err)
 	}
 }
 
@@ -242,5 +235,108 @@ func TestRewriteBody_RemoveObjectFieldWithNestedFields(t *testing.T) {
 	}
 	if _, err := parser.ParseQuery(&ast.Source{Input: query}); err != nil {
 		t.Fatalf("rewritten query is invalid GraphQL: %v; query=%s", err, query)
+	}
+}
+
+func TestRewriteBody_NestedEmptySelectionSet_ParentRemoved(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { id profile { salary } } }`)
+	out, err := RewriteBody(body, []string{"salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "profile") {
+		t.Errorf("expected profile to be removed (empty children), got %s", out)
+	}
+	if !strings.Contains(string(out), "id") {
+		t.Errorf("expected id to remain, got %s", out)
+	}
+}
+
+func TestRewriteBody_NestedAllRemoved_ReturnsError(t *testing.T) {
+	t.Parallel()
+	body := mustMakeBody(t, `{ employees { profile { salary } } }`)
+	_, err := RewriteBody(body, []string{"salary"})
+	if !errors.Is(err, ErrEmptyQuery) {
+		t.Fatalf("expected ErrEmptyQuery, got %v", err)
+	}
+}
+
+func TestRewriteBody_NamedFragment_Empty_SpreadRemoved(t *testing.T) {
+	t.Parallel()
+	query := `fragment Sensitive on Employee { salary }
+query { employees { name ...Sensitive } }`
+	body := mustMakeBody(t, query)
+	out, err := RewriteBody(body, []string{"salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "Sensitive") {
+		t.Errorf("expected empty fragment spread removed, got %s", out)
+	}
+	if !strings.Contains(string(out), "name") {
+		t.Errorf("expected name to remain, got %s", out)
+	}
+}
+
+func TestRewriteBody_NamedFragment_Partial(t *testing.T) {
+	t.Parallel()
+	query := `fragment EmpFields on Employee { salary name department }
+query { employees { id ...EmpFields } }`
+	body := mustMakeBody(t, query)
+	out, err := RewriteBody(body, []string{"salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary removed from fragment, got %s", out)
+	}
+	if !strings.Contains(string(out), "EmpFields") {
+		t.Errorf("expected fragment spread to remain, got %s", out)
+	}
+	if !strings.Contains(string(out), "department") {
+		t.Errorf("expected department to remain, got %s", out)
+	}
+}
+
+func TestRewriteBody_BatchQuery(t *testing.T) {
+	t.Parallel()
+	batch := `[{"query":"{ users { name salary } }"},{"query":"{ posts { title } }"}]`
+	out, err := RewriteBody([]byte(batch), []string{"salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary removed from batch, got %s", out)
+	}
+	if !strings.Contains(string(out), "name") {
+		t.Errorf("expected name to remain, got %s", out)
+	}
+	if !strings.Contains(string(out), "title") {
+		t.Errorf("expected title to remain, got %s", out)
+	}
+}
+
+func TestRewriteBody_BatchQuery_OneEmpty(t *testing.T) {
+	t.Parallel()
+	batch := `[{"query":"{ users { salary } }"},{"query":"{ posts { title } }"}]`
+	_, err := RewriteBody([]byte(batch), []string{"salary"})
+	if !errors.Is(err, ErrEmptyQuery) {
+		t.Fatalf("expected ErrEmptyQuery, got %v", err)
+	}
+}
+
+func TestRewriteBody_BatchQuery_NoQueryField(t *testing.T) {
+	t.Parallel()
+	batch := `[{"variables":{}},{"query":"{ posts { title salary } }"}]`
+	out, err := RewriteBody([]byte(batch), []string{"salary"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(out), "salary") {
+		t.Errorf("expected salary removed, got %s", out)
+	}
+	if !strings.Contains(string(out), "title") {
+		t.Errorf("expected title to remain, got %s", out)
 	}
 }

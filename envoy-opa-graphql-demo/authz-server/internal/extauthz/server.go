@@ -101,12 +101,23 @@ func (s *Server) Check(ctx context.Context, req *authv3.CheckRequest) (*authv3.C
 		return denied(codes.PermissionDenied, reason), nil
 	}
 
-	// 5. 如有 denied_fields，改写 body
-	if len(decision.DeniedFields) > 0 && body != "" {
+	// 5. 如有 denied_fields，检查请求类型并改写 body
+	if len(decision.DeniedFields) > 0 {
+		method := strings.ToUpper(httpReq.GetMethod())
+		if method == "GET" {
+			return denied(codes.PermissionDenied, "GET requests not supported with field-level restrictions"), nil
+		}
+		contentType := httpReq.GetHeaders()["content-type"]
+		if strings.HasPrefix(contentType, "multipart/") {
+			return denied(codes.PermissionDenied, "multipart requests not supported with field-level restrictions"), nil
+		}
+		if body == "" || gqlBody.Query == "" {
+			return denied(codes.PermissionDenied, "cannot enforce field restrictions without query body"), nil
+		}
 		rewrittenBody, err := rewriteBody([]byte(body), decision.DeniedFields)
 		if err != nil {
 			log.Printf("rewrite error: %v", err)
-			return denied(codes.Internal, "query rewrite failed"), nil
+			return denied(codes.PermissionDenied, "query rewrite failed: all requested fields are denied"), nil
 		}
 		log.Printf("rewritten body: %s", string(rewrittenBody))
 		return allowedWithRewrittenBodyAndUserID(string(rewrittenBody), userInfo.Subject), nil

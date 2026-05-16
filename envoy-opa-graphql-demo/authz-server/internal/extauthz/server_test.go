@@ -287,8 +287,8 @@ func TestCheck_RewriteError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
-	if resp.GetStatus().GetCode() != int32(codes.Internal) {
-		t.Errorf("status code = %d, want Internal(%d)", resp.GetStatus().GetCode(), codes.Internal)
+	if resp.GetStatus().GetCode() != int32(codes.PermissionDenied) {
+		t.Errorf("status code = %d, want PermissionDenied(%d)", resp.GetStatus().GetCode(), codes.PermissionDenied)
 	}
 }
 
@@ -646,5 +646,202 @@ decision := {
 	}
 	if _, err := parser.ParseQuery(&ast.Source{Input: rewrittenQuery}); err != nil {
 		t.Fatalf("rewritten query is invalid GraphQL: %v; query=%s", err, rewrittenQuery)
+	}
+}
+
+func makeCheckRequestWithMethod(method, authHeader, body, contentType string) *authv3.CheckRequest {
+	headers := map[string]string{}
+	if authHeader != "" {
+		headers["authorization"] = authHeader
+	}
+	if contentType != "" {
+		headers["content-type"] = contentType
+	}
+	return &authv3.CheckRequest{
+		Attributes: &authv3.AttributeContext{
+			Request: &authv3.AttributeContext_Request{
+				Http: &authv3.AttributeContext_HttpRequest{
+					Method:  method,
+					Headers: headers,
+					Body:    body,
+				},
+			},
+		},
+	}
+}
+
+func TestCheck_GETWithDeniedFields_Denied(t *testing.T) {
+	origJWT := jwtParseFromHeader
+	defer func() { jwtParseFromHeader = origJWT }()
+	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
+		return &jwt.UserInfo{
+			Subject:       "alice",
+			Roles:         []string{"user"},
+			Privileges:    mustEncodePrivileges(t, []string{"user"}),
+			Authenticated: true,
+		}, nil
+	}
+
+	eval := fakeEvaluatorWithPolicy(t, `
+package graphqlapi.authz
+import rego.v1
+default decision := {"allow": false, "denied_fields": [], "reason": "denied"}
+decision := {"allow": true, "denied_fields": ["salary"], "reason": ""} if {
+	input.user.authenticated
+	not hasPrivilege(input.user.privileges, "read:salary")
+}
+decision := {"allow": true, "denied_fields": [], "reason": ""} if {
+	input.user.authenticated
+	hasPrivilege(input.user.privileges, "read:salary")
+}
+`)
+	s := NewServer(eval)
+
+	req := makeCheckRequestWithMethod("GET", "Bearer fake", "", "")
+	resp, err := s.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if resp.GetStatus().GetCode() != int32(codes.PermissionDenied) {
+		t.Errorf("status = %d, want PermissionDenied", resp.GetStatus().GetCode())
+	}
+}
+
+func TestCheck_GETNoDeniedFields_Allowed(t *testing.T) {
+	origJWT := jwtParseFromHeader
+	defer func() { jwtParseFromHeader = origJWT }()
+	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
+		return &jwt.UserInfo{
+			Subject:       "admin",
+			Roles:         []string{"admin"},
+			Privileges:    mustEncodePrivileges(t, []string{"admin"}),
+			Authenticated: true,
+		}, nil
+	}
+
+	eval := fakeEvaluator(t)
+	s := NewServer(eval)
+
+	req := makeCheckRequestWithMethod("GET", "Bearer fake", "", "")
+	resp, err := s.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if resp.GetStatus().GetCode() != int32(codes.OK) {
+		t.Errorf("status = %d, want OK", resp.GetStatus().GetCode())
+	}
+}
+
+func TestCheck_MultipartWithDeniedFields_Denied(t *testing.T) {
+	origJWT := jwtParseFromHeader
+	defer func() { jwtParseFromHeader = origJWT }()
+	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
+		return &jwt.UserInfo{
+			Subject:       "alice",
+			Roles:         []string{"user"},
+			Privileges:    mustEncodePrivileges(t, []string{"user"}),
+			Authenticated: true,
+		}, nil
+	}
+
+	eval := fakeEvaluatorWithPolicy(t, `
+package graphqlapi.authz
+import rego.v1
+default decision := {"allow": false, "denied_fields": [], "reason": "denied"}
+decision := {"allow": true, "denied_fields": ["salary"], "reason": ""} if {
+	input.user.authenticated
+	not hasPrivilege(input.user.privileges, "read:salary")
+}
+decision := {"allow": true, "denied_fields": [], "reason": ""} if {
+	input.user.authenticated
+	hasPrivilege(input.user.privileges, "read:salary")
+}
+`)
+	s := NewServer(eval)
+
+	body, _ := json.Marshal(map[string]string{"query": "{ users { name salary } }"})
+	req := makeCheckRequestWithMethod("POST", "Bearer fake", string(body), "multipart/form-data; boundary=----")
+	resp, err := s.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if resp.GetStatus().GetCode() != int32(codes.PermissionDenied) {
+		t.Errorf("status = %d, want PermissionDenied", resp.GetStatus().GetCode())
+	}
+}
+
+func TestCheck_APQBypass_Denied(t *testing.T) {
+	origJWT := jwtParseFromHeader
+	defer func() { jwtParseFromHeader = origJWT }()
+	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
+		return &jwt.UserInfo{
+			Subject:       "alice",
+			Roles:         []string{"user"},
+			Privileges:    mustEncodePrivileges(t, []string{"user"}),
+			Authenticated: true,
+		}, nil
+	}
+
+	eval := fakeEvaluatorWithPolicy(t, `
+package graphqlapi.authz
+import rego.v1
+default decision := {"allow": false, "denied_fields": [], "reason": "denied"}
+decision := {"allow": true, "denied_fields": ["salary"], "reason": ""} if {
+	input.user.authenticated
+	not hasPrivilege(input.user.privileges, "read:salary")
+}
+decision := {"allow": true, "denied_fields": [], "reason": ""} if {
+	input.user.authenticated
+	hasPrivilege(input.user.privileges, "read:salary")
+}
+`)
+	s := NewServer(eval)
+
+	apqBody := `{"extensions":{"persistedQuery":{"sha256Hash":"abc123"}}}`
+	req := makeCheckRequest("Bearer fake", apqBody)
+	resp, err := s.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if resp.GetStatus().GetCode() != int32(codes.PermissionDenied) {
+		t.Errorf("status = %d, want PermissionDenied", resp.GetStatus().GetCode())
+	}
+}
+
+func TestCheck_EmptyQueryAfterRewrite_Denied(t *testing.T) {
+	origJWT := jwtParseFromHeader
+	defer func() { jwtParseFromHeader = origJWT }()
+	jwtParseFromHeader = func(header string) (*jwt.UserInfo, error) {
+		return &jwt.UserInfo{
+			Subject:       "alice",
+			Roles:         []string{"user"},
+			Privileges:    mustEncodePrivileges(t, []string{"user"}),
+			Authenticated: true,
+		}, nil
+	}
+
+	eval := fakeEvaluatorWithPolicy(t, `
+package graphqlapi.authz
+import rego.v1
+default decision := {"allow": false, "denied_fields": [], "reason": "denied"}
+decision := {"allow": true, "denied_fields": ["salary"], "reason": ""} if {
+	input.user.authenticated
+	not hasPrivilege(input.user.privileges, "read:salary")
+}
+decision := {"allow": true, "denied_fields": [], "reason": ""} if {
+	input.user.authenticated
+	hasPrivilege(input.user.privileges, "read:salary")
+}
+`)
+	s := NewServer(eval)
+
+	body, _ := json.Marshal(map[string]string{"query": "{ users { salary } }"})
+	req := makeCheckRequest("Bearer fake", string(body))
+	resp, err := s.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if resp.GetStatus().GetCode() != int32(codes.PermissionDenied) {
+		t.Errorf("status = %d, want PermissionDenied", resp.GetStatus().GetCode())
 	}
 }
